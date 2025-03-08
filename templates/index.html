@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Index-II Downloader</title>
+    <meta charset="UTF-8">
+    <style>
+        /* Modern CSS styles */
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #34495e;
+            font-weight: 500;
+        }
+        select, input[type="text"] {
+            width: 100%;
+            padding: 0.8rem;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            background: white;
+            transition: all 0.3s ease;
+        }
+        select:focus, input[type="text"]:focus {
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52,152,219,0.1);
+            outline: none;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            padding: 0.8rem 2rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s ease;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        #status {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: #ecf0f1;
+            border-radius: 6px;
+            color: #2c3e50;
+        }
+    </style>
+    <script>
+        // Initialize districts data
+        window.districts = JSON.parse('{{ districts|tojson|safe }}');
+
+        function updateTalukas() {
+            const district = document.getElementById('district_name').value;
+            const talukaSelect = document.getElementById('taluka_name');
+            talukaSelect.innerHTML = '<option value="">Select Taluka</option>';
+            
+            if (district && window.districts[district]) {
+                window.districts[district]['तालुका'].forEach(taluka => {
+                    const option = document.createElement('option');
+                    option.value = taluka;
+                    option.textContent = taluka;
+                    talukaSelect.appendChild(option);
+                });
+            }
+            updateVillages();
+        }
+
+        function updateVillages() {
+            const district = document.getElementById('district_name').value;
+            const taluka = document.getElementById('taluka_name').value;
+            const villageSelect = document.getElementById('village_name');
+            villageSelect.innerHTML = '<option value="">Select Village</option>';
+            
+            if (district && taluka && window.districts[district]['गाव'][taluka]) {
+                window.districts[district]['गाव'][taluka].forEach(village => {
+                    const option = document.createElement('option');
+                    option.value = village;
+                    option.textContent = village;
+                    villageSelect.appendChild(option);
+                });
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>Index-II Document Downloader</h1>
+    <form method="POST">
+        <label for="year">Year:</label>
+        <select id="year" name="year" required>
+            <option value="">Select Year</option>
+            {% for year in years %}
+                <option value="{{ year }}">{{ year }}</option>
+            {% endfor %}
+        </select><br><br>
+        
+        <label for="district_name">District Name:</label>
+        <select id="district_name" name="district_name" required onchange="updateTalukas()">
+            <option value="">Select District</option>
+            {% for district in districts %}
+                <option value="{{ district }}">{{ district }}</option>
+            {% endfor %}
+        </select><br><br>
+        
+        <label for="taluka_name">Taluka Name:</label>
+        <select id="taluka_name" name="taluka_name" required onchange="updateVillages()">
+            <option value="">Select Taluka</option>
+        </select><br><br>
+        
+        <label for="village_name">Village Name:</label>
+        <select id="village_name" name="village_name" required>
+            <option value="">Select Village</option>
+        </select><br><br>
+        
+        <label for="property_number">Property Number:</label>
+        <input type="text" id="property_number" name="property_number" required><br><br>
+        
+        <label>
+            <input type="checkbox" name="download_all"> Download All Documents
+        </label><br><br>
+        
+        <button type="submit">Start Download</button>
+    </form>
+
+    <!-- Add PDF link button -->
+    <div style="text-align: center; margin-top: 2rem;">
+        <a href="https://drive.google.com/drive/folders/1yT_M8b4_VTFZ0X4ggRJTxhRm5QYLp3E9" target="_blank">
+            <button style="background: #27ae60;">
+                See Your PDFs Here
+            </button>
+        </a>
+    </div>
+
+    <div id="status"></div>
+
+    <!-- Results section -->
+    <div id="results" style="margin-top: 2rem; display: none;">
+        <h2>Uploaded PDFs</h2>
+        <ol id="pdf-list" style="list-style: decimal inside; padding: 0;"></ol>
+    </div>
+
+    <script>
+        // Function to populate dropdown
+        function populateDropdown(elementId, options) {
+            const select = document.getElementById(elementId);
+            select.innerHTML = '';
+            options.forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option.value;
+                opt.text = option.text;
+                select.appendChild(opt);
+            });
+        }
+
+        // Load initial options
+        fetch('/get_options')
+            .then(response => response.json())
+            .then(data => {
+                // Populate year dropdown
+                const yearOptions = Object.entries(data.years).map(([value, text]) => ({value, text}));
+                populateDropdown('year', yearOptions);
+
+                // Populate district dropdown
+                const districtOptions = Object.entries(data.districts).map(([value, text]) => ({value, text}));
+                populateDropdown('district', districtOptions);
+            })
+            .catch(error => {
+                console.error('Error loading options:', error);
+            });
+
+        // Handle district change
+        document.getElementById('district').addEventListener('change', function() {
+            const districtValue = this.value;
+            const talukaSelect = document.getElementById('taluka');
+            talukaSelect.disabled = true;
+            talukaSelect.innerHTML = '<option value="">Loading talukas...</option>';
+
+            fetch('/get_taluka_options', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({district: districtValue})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                const talukaOptions = Object.entries(data.talukas).map(([value, text]) => ({value, text}));
+                populateDropdown('taluka', talukaOptions);
+                talukaSelect.disabled = false;
+            })
+            .catch(error => {
+                console.error('Error loading talukas:', error);
+                talukaSelect.innerHTML = '<option value="">Error loading talukas</option>';
+            });
+        });
+
+        // Handle taluka change
+        document.getElementById('taluka').addEventListener('change', function() {
+            const talukaValue = this.value;
+            const villageSelect = document.getElementById('village');
+            villageSelect.disabled = true;
+            villageSelect.innerHTML = '<option value="">Loading villages...</option>';
+
+            fetch('/get_village_options', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({taluka: talukaValue})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) throw new Error(data.error);
+                const villageOptions = Object.entries(data.villages).map(([value, text]) => ({value, text}));
+                populateDropdown('village', villageOptions);
+                villageSelect.disabled = false;
+            })
+            .catch(error => {
+                console.error('Error loading villages:', error);
+                villageSelect.innerHTML = '<option value="">Error loading villages</option>';
+            });
+        });
+
+        // Handle form submission
+        document.querySelector('form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                year: document.getElementById('year').value,
+                district: document.getElementById('district_name').value,
+                taluka: document.getElementById('taluka_name').value,
+                village: document.getElementById('village_name').value,
+                property_number: document.getElementById('property_number').value
+            };
+
+            document.getElementById('status').textContent = 'Starting download...';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('pdf-list').innerHTML = '';
+
+            fetch('/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('status').textContent = 'Download completed successfully!';
+                    document.getElementById('results').style.display = 'block';
+                    
+                    if (Array.isArray(data.results)) {
+                        data.results.forEach((pdf, index) => {
+                            const listItem = document.createElement('li');
+                            listItem.textContent = `${index + 1}. ${pdf.file_name}`;
+                            document.getElementById('pdf-list').appendChild(listItem);
+                        });
+                    } else {
+                        const listItem = document.createElement('li');
+                        listItem.textContent = `1. ${data.file_name}`;
+                        document.getElementById('pdf-list').appendChild(listItem);
+                    }
+                } else {
+                    document.getElementById('status').textContent = `Error: ${data.error}`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('status').textContent = 'Error starting download';
+                console.error('Error:', error);
+            });
+        });
+    </script>
+</body>
+</html>
